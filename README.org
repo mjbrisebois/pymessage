@@ -1,0 +1,358 @@
+#+TITLE: iPhone Databases
+#+STYLE: <link rel="stylesheet" type="text/css" href="org.css" />
+
+* Overview
+
+  | Databases                   | Backup File Name                           |
+  |-----------------------------+--------------------------------------------|
+  | Message database name:      | *3d0d7e5fb2ce288813306e4d4636395e047a3d28* |
+  | Address Book database name: | *31bb7ba8914766d4ba40d6dfb6113c8b614be442* |
+
+  *Table Relationships*
+
+  #+BEGIN_EXAMPLE
+DB: Messages (3d0d7e5fb2ce288813306e4d4636395e047a3d28)
+
+    TABLE: chat_message_join
+        chat_id			-> chat.rowid
+        message_id		-> message.rowid
+
+    TABLE: chat
+        chat_identifier		-> <person phone/email identifier>
+
+    TABLE: chat_handle_join
+        chat_id			-> chat.rowid
+        handle_id		-> handle.rowid
+
+    TABLE: handle
+        id			-> <person phone/email identifier>
+        uncanonicalized_id	-> <person phone/email identifier>
+
+DB: Address Book (31bb7ba8914766d4ba40d6dfb6113c8b614be442)
+
+    TABLE: ABPersonFullTextSearch_content
+        rowid		-> ABPerson.rowid
+
+    TABLE: ABMultiValue
+        record_id	-> ABPerson.rowid
+
+  #+END_EXAMPLE
+
+
+  *Join a message to a chat*
+
+  #+BEGIN_SRC sql
+  SELECT *
+    FROM message m
+    JOIN chat_message_join cmj
+      ON cmj.message_id = m.rowid
+    JOIN chat c
+      ON c.rowid = cmj.chat_id
+  #+END_SRC
+  
+  *Join a chat to a person*
+
+  #+BEGIN_SRC sql
+  SELECT *
+    FROM ABMultiValue mv
+    JOIN ABPerson p
+      ON p.rowid = mv.record_id
+   WHERE mv.value = "<chat.chat_identifier>"
+  #+END_SRC
+
+** Dates
+
+   - *946710000000* - Jan 1, 2000 00:00:00
+   - *978307200000* - Jan 1, 2000 00:00:00 GMT-07:00 (MST)
+
+   Apple calculates dates based on *946710000000*.  We can simply add there timestamp to this number
+   to get the value accepted by javascript ~new Date(<timestamp>)~.
+
+* Message Database
+
+  *message*
+  
+  #+BEGIN_SRC sql
+CREATE TABLE message (
+  ROWID			INTEGER PRIMARY KEY AUTOINCREMENT,
+  guid			TEXT UNIQUE NOT NULL,
+  text			TEXT,
+  replace		INTEGER DEFAULT 0,
+  service_center	TEXT,
+  handle_id		INTEGER DEFAULT 0,
+  subject		TEXT,
+  country		TEXT,
+  attributedBody	BLOB,
+  version		INTEGER DEFAULT 0,
+  type			INTEGER DEFAULT 0,
+  service		TEXT,
+  account		TEXT,
+  account_guid		TEXT,
+  error			INTEGER DEFAULT 0,
+  date			INTEGER,
+  date_read		INTEGER,
+  date_delivered	INTEGER,
+  is_delivered		INTEGER DEFAULT 0,
+  is_finished		INTEGER DEFAULT 0,
+  is_emote		INTEGER DEFAULT 0,
+
+  is_from_me		INTEGER DEFAULT 0,
+  is_empty		INTEGER DEFAULT 0,
+  is_delayed		INTEGER DEFAULT 0,
+  is_auto_reply		INTEGER DEFAULT 0,
+  is_prepared		INTEGER DEFAULT 0,
+  is_read		INTEGER DEFAULT 0,
+  is_system_message	INTEGER DEFAULT 0,
+  is_sent		INTEGER DEFAULT 0,
+
+  has_dd_results	INTEGER DEFAULT 0,
+  is_service_message	INTEGER DEFAULT 0,
+  is_forward		INTEGER DEFAULT 0,
+  was_downgraded	INTEGER DEFAULT 0,
+  is_archive		INTEGER DEFAULT 0,
+  cache_has_attachments	INTEGER DEFAULT 0,
+  cache_roomnames	TEXT,
+  was_data_detected	INTEGER DEFAULT 0,
+  was_deduplicated	INTEGER DEFAULT 0
+);
+
+CREATE INDEX message_idx_failed		ON message(is_finished, is_from_me, error);
+CREATE INDEX message_idx_handle		ON message(handle_id, date);
+CREATE INDEX message_idx_is_read	ON message(is_read, is_from_me, is_finished);
+CREATE INDEX message_idx_was_downgraded	ON message(was_downgraded);
+
+CREATE TRIGGER clean_orphaned_handles2
+ AFTER DELETE ON message
+       BEGIN DELETE FROM handle
+       WHERE handle.ROWID = old.handle_id AND (SELECT 1 from chat_handle_join
+       WHERE handle_id = old.handle_id LIMIT 1) IS NULL 
+         AND (SELECT 1 from message WHERE handle_id = old.handle_id LIMIT 1) IS NULL;
+       END;
+  #+END_SRC
+
+  #+BEGIN_SRC json
+{
+    "service_center": null,
+    "is_from_me": 0,
+    "is_delivered": 1,
+    "replace": 0,
+    "is_system_message": 0,
+    "is_auto_reply": 0,
+    "guid": "D3E9480B-A3A0-445F-8CB8-F0B58DCF09FB",
+    "was_deduplicated": 0,
+    "subject": null,
+    "service": "iMessage",
+    "cache_roomnames": null,
+    "is_sent": 0,
+    "version": 10,
+    "text": "See you later!",
+    "type": 0,
+    "is_service_message": 0,
+    "cache_has_attachments": 0,
+    "has_dd_results": 0,
+    "handle_id": 333,
+    "is_read": 1,
+    "is_empty": 0,
+    "is_prepared": 0,
+    "date_delivered": 0,
+    "date": 418869760,
+    "is_emote": 0,
+    "was_data_detected": 1,
+    "account": "p:+11234567890",
+    "account_guid": "AB32DD13-3B2E-4B46-A788-B47DA7874692",
+    "is_forward": 0,
+    "country": null,
+    "was_downgraded": 0,
+    "is_archive": 0,
+    "date_read": 418869773,
+    "ROWID": 40089,
+    "error": 0,
+    "is_finished": 1,
+    "is_delayed": 0
+}  
+  #+END_SRC
+
+  *chat\_message\_join*
+
+  #+BEGIN_SRC sql
+CREATE TABLE chat_message_join (
+  chat_id			INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
+  message_id			INTEGER REFERENCES message (ROWID) ON DELETE CASCADE,
+  PRIMARY KEY (chat_id, message_id)
+)
+  #+END_SRC
+
+  #+BEGIN_SRC json
+{
+    "chat_id": 384,
+    "message_id": 40089,
+}
+  #+END_SRC
+
+  *chat*
+  
+  #+BEGIN_SRC sql
+CREATE TABLE chat (
+  ROWID				INTEGER PRIMARY KEY AUTOINCREMENT,
+  guid				TEXT UNIQUE NOT NULL,
+  style				INTEGER,
+  state				INTEGER,
+  account_id			TEXT,
+  properties			BLOB,
+  chat_identifier		TEXT,
+  service_name			TEXT, 
+  room_name			TEXT,
+  account_login			TEXT,
+  is_archived			INTEGER DEFAULT 0,
+  last_addressed_handle		TEXT,
+  display_name			TEXT
+)
+  #+END_SRC
+
+  ~guid~ can be broken down into 3 parts separated by semi-colons:
+
+  : <Service>     ; #   ; <chat_identifier>
+  : (SMS|iMessage);(-|+);(<email>|<phone>|<chat id>)
+
+  | (SMS\vert{}iMessage) | indicates the service used to send message. |
+  | (-\vert{}+)          | *+* indicates that it is a group chat       |
+  | <chat\_identifier>   | matches the ~chat_identifier~ column        |
+
+  If ~guid~ indicates that it is not a group chat then we can use the ~chat_identifier~ to discover
+  the contact information.  Otherwise the ~chat_identifier~ will be a chat ID and we must find the
+  list of contacts from the ~handle~ table.
+  
+
+  #+BEGIN_SRC json
+{
+    "style": 45,
+    "display_name": null,
+    "account_id": "AB32DD13-3B2E-4B46-A788-B47DA7874692",
+    "service_name": "iMessage",
+    "is_archived": 0,
+    "room_name": null,
+    "account_login": "P:+11234567890",
+    "message_count": 3,
+    "state": 3,
+    "ROWID": 384,
+    "guid": "iMessage;-;mandrid@example.com",
+    "last_addressed_handle": "+11234567890",
+    "chat_identifier": "mandrid@example.com"
+}
+  #+END_SRC
+
+* Address Book Database
+
+  *ABPerson*
+
+  #+BEGIN_SRC sql
+CREATE TABLE ABPerson ( ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
+  First				TEXT,
+  Last				TEXT,
+  Middle			TEXT,
+  FirstPhonetic			TEXT,
+  MiddlePhonetic		TEXT,
+  LastPhonetic			TEXT,
+  Organization			TEXT,
+  Department			TEXT,
+  Note				TEXT,
+  Kind				INTEGER,
+  Birthday			TEXT,
+  JobTitle			TEXT,
+  Nickname			TEXT,
+  Prefix			TEXT,
+  Suffix			TEXT,
+  FirstSort			TEXT,
+  LastSort			TEXT,
+  CreationDate			INTEGER,
+  ModificationDate		INTEGER,
+  CompositeNameFallback		TEXT,
+  ExternalIdentifier		TEXT,
+  ExternalModificationTag	TEXT,
+  ExternalUUID			TEXT,
+  StoreID			INTEGER,
+  DisplayName			TEXT,
+  ExternalRepresentation	BLOB,
+  FirstSortSection		TEXT,
+  LastSortSection		TEXT,
+  FirstSortLanguageIndex	INTEGER DEFAULT 2147483647,
+  LastSortLanguageIndex		INTEGER DEFAULT 2147483647,
+  PersonLink			INTEGER DEFAULT -1,
+  ImageURI			TEXT,
+  IsPreferredName		INTEGER DEFAULT 1,
+  guid				TEXT DEFAULT (ab_generate_guid()),
+  PhonemeData			TEXT,
+  UNIQUE(guid)
+)
+  #+END_SRC
+
+  #+BEGIN_SRC json
+{
+    "DisplayName": null,
+    "IsPreferredName": 0,
+    "LastSortSection": "-",
+    "PersonLink": 234,
+    "PhonemeData": null,
+    "CompositeNameFallback": null,
+    "Note": null,
+    "Department": null,
+    "FirstSortSection": "+",
+    "LastPhonetic": null,
+    "FirstSortLanguageIndex": 0,
+    "guid": "75403396-56F0-4660-A69C-666DECE60462",
+    "ExternalModificationTag": "\"C=1051@U=4cb9dc36-cbb7-4428-a8f0-35155d638bf1\"",
+    "ExternalIdentifier":
+    "/1266947570/carddavhome/card/MTc3MzE5ZDctNmUyOC00MzNkLTk1YjQtYzdjNDc0MGMzNWFl.vcf",
+    "Birthday": null,
+    "ModificationDate": 414011103,
+    "LastSortLanguageIndex": 0,
+    "Nickname": null,
+    "Kind": 0,
+    "StoreID": 6,
+    "Last": "Falls",
+    "FirstPhonetic": null,
+    "ImageURI": null,
+    "MiddlePhonetic": null,
+    "Organization": null,
+    "First": "Mandrid",
+    "Suffix": null,
+    "JobTitle": null,
+    "LastSort":
+    "-/A\u0002CMM/I\u0002+OIM7K\u0001\u0007\u0002\t\u0002\n\u0001\u0007\u0002\u008f\b\u0002\u008f\t",
+    "Middle": null,
+    "Prefix": null,
+    "FirstSort":
+    "+OIM7K\u0002-/A\u0002CMM/I\u0001\n\u0002\u0007\u0002\t\u0001\u008f\t\u0002\u0007\u0002\u008f\b",
+    "ROWID": 127,
+    "ExternalUUID": "177319d7-6e28-433d-95b4-c7c4740c35ae",
+    "CreationDate": 356110420
+}
+  #+END_SRC
+
+  *ABMultiValue*
+
+  #+BEGIN_SRC sql
+CREATE TABLE ABMultiValue (UID INTEGER PRIMARY KEY,
+  record_id			INTEGER,
+  property			INTEGER,
+  identifier			INTEGER,
+  label				INTEGER,
+  value				TEXT,
+  guid				TEXT DEFAULT (ab_generate_guid()),
+  UNIQUE(guid)
+)
+  #+END_SRC
+
+  #+BEGIN_SRC json
+{
+    "guid": "384CD4E8-62EB-4D74-9281-00ED356AF9CF",
+    "identifier": 2,
+    "UID": 4667,
+    "value": "mandrid@example.com",
+    "label": 16,
+    "record_id": 127,
+    "property": 4
+}
+  #+END_SRC
+
+  
