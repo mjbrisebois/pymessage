@@ -2,59 +2,22 @@
 
 import json
 import datetime
-import sqlite3		as sql
+import logging
 
+logging.basicConfig(**{
+    "level":	logging.DEBUG,
+    "datefmt":	'%m-%d %H:%M:%S',
+    "format":	'%(asctime)s.%(msecs).03d %(threadName)10.10s %(name)-15.15s %(funcName)-15.15s %(levelname)-8.8s %(message)s',
+})
+log		= logging.getLogger( __file__ )
+
+from address_book	import AddressBook
 from collections	import OrderedDict
+from utils		import sqlite
 
-def db_connect( db ):
-    def dict_factory(cursor, row):
-        d = {}
-        for idx, col in enumerate(cursor.description):
-            d[col[0]]	= row[idx]
-        return d
-    conn		= sql.connect(db)
-    conn.row_factory	= dict_factory    
-    return conn
-
-conn		= db_connect('3d0d7e5fb2ce288813306e4d4636395e047a3d28')
-addr_conn	= db_connect('31bb7ba8914766d4ba40d6dfb6113c8b614be442')
-addr_c		= addr_conn.cursor()
+AB		= AddressBook( '31bb7ba8914766d4ba40d6dfb6113c8b614be442' )
+conn		= sqlite.connect('3d0d7e5fb2ce288813306e4d4636395e047a3d28')
 c		= conn.cursor()
-
-def exec_print(c, query, limit=None):
-    print query
-    c.execute(query)
-
-    for row in c.fetchall() if limit is None else range( limit ):
-        if limit is not None:
-            row	= c.fetchone()
-        if not row:
-            break
-        try:
-            for blob in ['attributedBody', 'properties', 'ExternalRepresentation']:
-                if blob in row:
-                    del row[blob]
-            print json.dumps( row, indent=4 )
-        except Exception as exc:
-            print exc    
-
-def find_user( name=None, phone=None, email=None ):
-    """ABPersons contains the person list and ABMultiValue contains the information that has
-    multiple values (phone, email...).
-
-    """
-    global addr_c, c
-    #exec_print(addr_c, "select * from ABPerson where First like '%"+name+"%'")
-    exec_print(addr_c, "select * from ABMultiValue where record_id = 127")
-    #exec_print(c, "select *, count(*) as message_count from chat where chat_identifier like '%"+name+"%' or chat_identifier like '%"+phone+"%'")
-
-def recent_messages():
-    global c
-    exec_print(c, "select * from message order by date desc limit 1")
-
-def recent_messages():
-    global c
-    exec_print(c, "select * from message order by date desc limit 1")
 
 # Ideally we want:
 #   - a list of people that we can reference by phone or email
@@ -62,39 +25,9 @@ def recent_messages():
 #   - a list of chats we can reference by chat_identifier each containing the list of persons
 #     involved with that chat
 
-# person_dict keys are the search strings for phone and email
-person_dict	= {}
-# person_dict keys are the person id
-person_id_dict	= {}
 # chat_dict keys are the chat_identifier
 chat_dict	= OrderedDict()
 
-def load_persons():
-    global person_dict
-
-    addr_c.execute("""
-  SELECT c15Phone, c16Email, p.*
-    FROM ABPersonFullTextSearch_content ps
-    JOIN ABPerson p
-      ON p.rowid = ps.rowid
-""")
-
-    for row in addr_c.fetchall():
-        for blob in ['ExternalRepresentation']:
-            if blob in row:
-                del row[blob]
-        key			= " ".join([ row['c15Phone'] or "", row['c16Email'] or "" ])
-        person_dict[key]	= row
-        key			= row['ROWID']
-        person_id_dict[key]	= row
-    print "Loaded %d persons" % (len(person_dict))
-load_persons()
-
-def contact( p_id ):
-    for key in person_dict.keys():
-        if p_id in key:
-            return person_dict[key]
-    return None
 
 def load_chats():
     global person_dict
@@ -136,12 +69,12 @@ def load_chats():
             if blob in row:
                 del row[blob]
         key		= row['chat_identifier']
-        person		= contact(row['id'])
+        person		= AB[row['id']]
         if not person:
             person	= row['id']
         else:
-            p_id	= person['ROWID']
-            person_id_dict[p_id].setdefault('chats', []).append(chat_dict[key])
+            person.setdefault('chats', []).append(chat_dict[key])
+
         chat_dict[key].setdefault('persons', []).append(person)
     print "Loaded %d handles" % (len(results),)
 load_chats()
@@ -159,7 +92,7 @@ def chat_list():
         print "%40.40s : %-25.25s %-20.20s %-100.100s%s" % (chat['chat_identifier'], people_str, date_str, text, "" if len(text) <= 100 else "..." )
 
 def person_chats( p_identifier ):
-    person		= contact(p_identifier)
+    person		= AB[p_identifier]
     if person:
         for chat in person.get('chats', []):
             date_str	= date(chat['date'])
@@ -182,6 +115,8 @@ def get_messages_for_chat( chat_identifier ):
     
 
 def show_conversation( chat_identifier ):
+    loglevel		= logging.root.getEffectiveLevel()
+    logging.root.setLevel( logging.ERROR )
     messages		= get_messages_for_chat( chat_identifier )
     chat		= chat_dict[chat_identifier]
     width		= 60
@@ -189,7 +124,7 @@ def show_conversation( chat_identifier ):
     print "Found %d messages for chat: %s : %s" % (len(messages), chat_identifier, chat['ROWID'] )
     for m in messages:
         date_str	= date(m['date'])
-        person		= contact( m['id'] or "matthew@b" )
+        person		= AB[m['id'] or "matthew@b"]
         name		= "%s %s" % (person['First'], person['Last']) if person else m['id']
         text		= m['text'].replace("\n", " ")
         more_text	= None
@@ -216,13 +151,12 @@ def show_conversation( chat_identifier ):
             else:
                 print "%20.20s %19.19s | %39.39s %-60.60s |" % ( "", "", "", text )
         print "%20.20s %19.19s | %-100.60s |" % ( "", "", "" )
+    logging.root.setLevel( loglevel )
             
 
-#person_chats( 'curtis' )
-#chat_list()
 for c_id,chat in chat_dict.iteritems():
     if c_id.startswith('chat'):
-        ask		= "Show chat %s with %s: y/N? " % ( c_id, ", ".join([p['First'] if type(p) is dict else p for p in chat['persons']]) )
+        ask		= "Show chat %s with %s: y/N? " % ( c_id, ", ".join([ "%s %s" % (p['First'], p['Last']) if type(p) is dict else p for p in chat['persons']]) )
         aswr		= raw_input(ask)
         if aswr.lower() in ["y"]:
             show_conversation( c_id )
