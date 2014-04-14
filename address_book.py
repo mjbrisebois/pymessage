@@ -62,6 +62,14 @@ class AddressBook( dict ):
             return r
         else:
             return self.search( key, limit=1 )
+
+    def person_has_chat( self, p_id, chat ):
+        if self[p_id]:
+            self[p_id].setdefault('chats', []).append( chat )
+            return self[p_id]
+        else:
+            return p_id
+
         
 if __name__ == "__main__":
     import json, types
