@@ -1,0 +1,24 @@
+PyMessage is distributed under the GNU General Public License version 3 and is also available under
+alternative licenses negotiated directly with Web Heroes Inc. If you obtained PyMessage under the
+GPL, then the GPL applies to all PyMessage modules used on your system as well, except as defined
+below. The GPL (version 3) is included in this source tree in the file COPYING.
+
+Web Heroes Inc. holds copyright and/or sufficient licenses to all components of the PyMessage
+package, and therefore can grant, at its sole discretion, the ability for companies, individuals, or
+organizations to create proprietary or Open Source (even if not GPL) modules which may use at
+runtime the portions of PyMessage which fall under our copyright/license umbrella, or are
+distributed under more flexible licenses than GPL.
+
+If you wish to use our code in other GPL programs, don't worry -- there is no requirement that you
+provide the same exception in your GPL'd products (although if you've written a module for PyMessage
+we would strongly encourage you to make the same exception that we do).
+
+If you have any questions regarding our licensing policy, please contact us:
+
++1.587.920.5571
+contact@webheroes.ca
+
+Web Heroes Inc.
+Box 3458
+Spruce Grove, AB
+T7X 3B1 Canada
